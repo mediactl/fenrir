@@ -24,7 +24,7 @@ type Session struct {
 	AESKey string `json:"aes_key"`
 	AESIV  string `json:"aes_iv"`
 
-	RTSPFakeIP string `json:"rtsp_fake_ip,omitempty"` 
+	RTSPFakeIP string `json:"rtsp_fake_ip,omitempty"`
 
 	// overrides
 	H264GSTPipeline string `json:"h264_gst_pipeline,omitempty"`
@@ -40,6 +40,10 @@ type Runner struct {
 
 type ClientSettings struct {
 	ControllersOverride []string `json:"controllers_override"`
+	// Required by Wolf's API since 2026-11 (XBOX, PS, NINTENDO or AUTO); a
+	// session add without it fails with "Field named
+	// 'motion_controller_override' not found".
+	MotionControllerOverride string `json:"motion_controller_override"`
 	//!TODO Float is lossy type. Possible to use decimal?
 	HScrollAcceleration float64 `json:"h_scroll_acceleration"`
 	MouseAcceleration   float64 `json:"mouse_acceleration"`
@@ -174,6 +178,7 @@ func (c *client) ListApps(ctx context.Context) ([]App, error) {
 	}
 	return appsResp.Apps, nil
 }
+
 // This is no longer used, I will probably remove it in the future
 // POST /api/v1/apps/add
 func (c *client) AddApp(ctx context.Context, app App) error {
@@ -302,6 +307,7 @@ type AppsResponse struct {
 }
 
 type WolfEventType string
+
 const (
 	PauseStreamEventType WolfEventType = "wolf::core::events::PauseStreamEvent"
 )

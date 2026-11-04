@@ -1702,6 +1702,7 @@ func (c *SessionController) reconcileActiveStreams(
 				RunGID:              1000,
 				RunUID:              1000,
 				ControllersOverride: []string{"XBOX"},
+				MotionControllerOverride: "AUTO",
 				MouseAcceleration:   1.0,
 				VScrollAcceleration: 1.0,
 				HScrollAcceleration: 1.0,
