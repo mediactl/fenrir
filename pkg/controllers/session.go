@@ -753,10 +753,15 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 	// specifically the NVIDIA_VISIBLE_DEVICES
 	// I need a better method of injecting env vars / configs to the pod
 	// TODO
+	//
+	// PUID, PGID and UNAME are left to the Wolf image. Since 2026-11-01
+	// wolf:stable runs PulseAudio and Wolf under supervisord with user=root
+	// and defaults to UNAME=root/PUID=0; forcing ubuntu/1000 here makes the
+	// entrypoint gosu to ubuntu and supervisord exit with "Can't drop
+	// privilege as nonroot user". A User's sidecarPolicies.wolf.env can still
+	// set them (setting them here as well would duplicate the env names,
+	// which server-side apply rejects).
 	wolfEnvVars := map[string]string{
-		"PUID":                   "1000",
-		"PGID":                   "1000",
-		"UNAME":                  "ubuntu",
 		"XDG_RUNTIME_DIR":        "/tmp/.X11-unix",
 		"PULSE_SERVER":           "unix:/tmp/.X11-unix/pulse-socket",
 		"HOST_APPS_STATE_FOLDER": "/mnt/data/wolf",
