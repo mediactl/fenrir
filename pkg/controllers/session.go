@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	goerrors "errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -358,7 +359,8 @@ func (c *SessionController) Reconcile(namespace, name string, newObj *v1alpha1ty
 	// 	})
 	// }
 
-	if streamError := c.reconcileActiveStreams(context.TODO(), newObj); streamError != nil {
+	streamError := c.reconcileActiveStreams(context.TODO(), newObj)
+	if streamError != nil {
 		klog.Errorf("Failed to reconcile active streams: %s", streamError)
 		meta.SetStatusCondition(&newObj.Status.Conditions, metav1.Condition{
 			Type:    "StreamStarted",
@@ -392,7 +394,17 @@ func (c *SessionController) Reconcile(namespace, name string, newObj *v1alpha1ty
 		}
 	}
 
-	//!TODO: figure our retry logic. Some of these errors surely are retriable
+	// Retry a stream that could not start once its Deployment is ready. The
+	// usual cause is a race, not a fault: the Deployment turns ready before
+	// the CNI has programmed the session Service's new backend, so the first
+	// call to wolf-agent through it is refused. Nothing else changes after
+	// that, so without a requeue the stream never starts and the proxy's
+	// launch times out. While the Deployment is not ready, its own status
+	// change brings the Session back here, as before.
+	if streamError != nil && !goerrors.Is(streamError, errDeploymentNotReady) {
+		return fmt.Errorf("stream not started: %w", streamError)
+	}
+
 	return nil
 }
 
@@ -1533,6 +1545,10 @@ func (c *SessionController) allocatePorts(
 	return nil
 }
 
+// errDeploymentNotReady marks a stream that cannot start yet because its
+// Deployment is still rolling out; the Deployment's status change requeues it.
+var errDeploymentNotReady = goerrors.New("deployment not ready")
+
 // reconcileActiveStreams calls out to wolf-agent on the running pod to ensure
 // that wolf is configured in the correct state and listening for streams on the
 // correct ports for each session trying to connect to the Pod.
@@ -1548,9 +1564,13 @@ func (c *SessionController) reconcileActiveStreams(
 		return fmt.Errorf("failed to get deployment: %s", err)
 	}
 
+	// ReadyReplicas == 0 too: a just-created Deployment reports 0/0, which
+	// would otherwise pass as ready and send the first call to a pod that
+	// does not exist yet.
 	if deployment.Status.ObservedGeneration != deployment.Generation ||
+		deployment.Status.ReadyReplicas == 0 ||
 		deployment.Status.ReadyReplicas != deployment.Status.Replicas {
-		return fmt.Errorf("deployment %s/%s not ready (Observed %d, Latest %d) (%d/%d)", session.Namespace, deploymentName, deployment.Status.ObservedGeneration, deployment.Generation, deployment.Status.ReadyReplicas, deployment.Status.Replicas)
+		return fmt.Errorf("%w: %s/%s (Observed %d, Latest %d) (%d/%d)", errDeploymentNotReady, session.Namespace, deploymentName, deployment.Status.ObservedGeneration, deployment.Generation, deployment.Status.ReadyReplicas, deployment.Status.Replicas)
 	}
 
 	// Get service for the deployment
